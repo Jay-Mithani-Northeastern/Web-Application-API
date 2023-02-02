@@ -27,7 +27,6 @@ load_dotenv()
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 url = os.getenv("DATABASE_URL")
-connection = psycopg2.connect(url)
 
 # End Point to check server status
 @app.get("/healthz")
