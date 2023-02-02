@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from flask import Flask, request
 import psycopg2
 import bcrypt
-from bcrypt import checkpw
 
 CREATE_USERS_TABLE = """CREATE TABLE IF NOT EXISTS users 
     (id SERIAL PRIMARY KEY,
@@ -31,19 +30,19 @@ url = os.getenv("DATABASE_URL")
 connection = psycopg2.connect(url)
 
 # End Point to check server status
-@app.get("/api/healthz")
+@app.get("/healthz")
 def get_healthz():
-    return {"message ": "Sever is Healthy"}, 200
+    return {"message ": "Endpoint is Healthy"}, 200
 
 # Endpoint to create user
 @app.post("/v1/user")
 def create_user():
     data = request.get_json()
     connection = psycopg2.connect(url)
-    first_name = data["first_name"]
-    last_name = data["last_name"]
-    password = data["password"]
-    username = data["username"]
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+    password = data.get("password")
+    username = data.get("username")
 
     message = validation(first_name, last_name, username, password)
     if message != "":
@@ -61,13 +60,16 @@ def create_user():
                 "SELECT * FROM users WHERE user_name = %s", (username,))
             user = cursor.fetchone()
             if user:
+                connection.commit()
+                cursor.close()
                 return {'message': 'User with this email already exists'}, 400
             else:
                 cursor.execute(CREATE_USERS_TABLE)
                 cursor.execute(INSERT_USER_RETURN_ID, (first_name, last_name,
                                encrypted_password, username, account_created, account_updated))
                 user_id = cursor.fetchone()[0]
-            
+                connection.commit()
+                cursor.close()
     schema = {
         "id": user_id,
         "first_name": first_name,
@@ -98,8 +100,10 @@ def get_user_details(userId):
                 "SELECT * FROM users WHERE id = %s", (userId,))
             user = cursor.fetchone()
             if user is None:
-                message = f"User with user_id {userId} does not exist"
-                return {'message': message}, 401
+                message = "Forbidden"
+                connection.commit()
+                cursor.close()
+                return {'message': message}, 403
             else:
                 cursor.execute("SELECT user_name,password FROM users WHERE id = %s", (userId,))
                 user_data = cursor.fetchone()
@@ -107,6 +111,8 @@ def get_user_details(userId):
                 password_from_db = user_data[1]
                 if not bcrypt.checkpw(password.encode('utf-8'),password_from_db.encode('utf-8')) or username_from_db!=user_name:
                     message = "Invalid Credentials entered"
+                    connection.commit()
+                    cursor.close()
                     return {"message":message}, 401
                 else:
                     cursor.execute("SELECT first_name,last_name,user_name,account_created,account_updated FROM users WHERE id = %s", (userId,))
@@ -116,6 +122,8 @@ def get_user_details(userId):
                     user_name = user_data[2]
                     account_created = user_data[3]
                     account_updated = user_data[4]
+                    connection.commit()
+                    cursor.close()
     schema = {
         "id": userId,
         "first_name": first_name,
@@ -146,8 +154,10 @@ def update_user_details(userId):
                 "SELECT * FROM users WHERE id = %s", (userId,))
             user = cursor.fetchone()
             if user is None:
-                message = f"User with user_id {userId} does not exist"
-                return {'message': message}, 401
+                message = "Forbidden"
+                connection.commit()
+                cursor.close()
+                return {'message': message}, 403
             else:
                 cursor.execute("SELECT user_name,password FROM users WHERE id = %s", (userId,))
                 user_data = cursor.fetchone()
@@ -155,6 +165,8 @@ def update_user_details(userId):
                 password_from_db = user_data[1]
                 if not bcrypt.checkpw(password.encode('utf-8'),password_from_db.encode('utf-8')) or username_from_db!=user_name:
                     message = "Invalid Credentials entered"
+                    connection.commit()
+                    cursor.close()
                     return {"message":message}, 401
                 else:
                     data = request.get_json()
@@ -166,8 +178,12 @@ def update_user_details(userId):
                     new_password = data.get("password")
 
                     if any_other_field:
+                        connection.commit()
+                        cursor.close()
                         return {"message" : "Update restricted ! Only update on first_name, last_name, password is allowed"},400
                     elif new_first_name is None and new_last_name is None and new_username is None and new_password is None:
+                        connection.commit()
+                        cursor.close()
                         return {},204
                     else:
                         today = datetime.datetime.today()
@@ -180,6 +196,8 @@ def update_user_details(userId):
                             encrypted_password = encrypted_password.decode('utf-8')
                             cursor.execute("UPDATE users SET password = %s WHERE id = %s", (encrypted_password,userId))
                         cursor.execute("UPDATE users SET account_updated = %s WHERE id = %s", (today,userId))
+                        connection.commit()
+                        cursor.close()
     return {},204
 
 
@@ -188,7 +206,7 @@ def update_user_details(userId):
 def validation(first_name, last_name, username, password):
     message = ""
     contains_number = r'.*[0-9]'
-    is_username_valid = r'^(?i)([a-z0-9]+[@][a-z0-9]+[/.][a-z]+)$'
+    is_username_valid = r'^(?i)([a-z0-9]+([/.][a-z0-9]+)?[@][a-z0-9]+[/.][a-z]+)$'
     if first_name == "" or last_name == "" or username == "" or password == "":
         message = "Value cannot be Null"
     elif re.match(contains_number, first_name):
@@ -199,3 +217,6 @@ def validation(first_name, last_name, username, password):
         message = "Username should contain email address in correction format (example: demo@domain.com)"
     
     return message
+
+if __name__ == '__main__':
+    app.run()
