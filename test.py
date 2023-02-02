@@ -1,10 +1,5 @@
-
-try:
-    from app import app
-    import unittest
-
-except Exception as e:
-    print("Some Modules are missing {}".format(e))
+import unittest
+from app import app
 
 
 class WebAppTest(unittest.TestCase):
