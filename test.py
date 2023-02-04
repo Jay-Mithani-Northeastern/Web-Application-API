@@ -12,7 +12,7 @@ class WebAppTest(unittest.TestCase):
         tester = app.test_client(self)
         response = tester.get("/healthz")
         statuscode = response.status_code
-        self.assertEqual(statuscode,400)
+        self.assertEqual(statuscode,200)
     
 
 if __name__ == "__main__":
