@@ -1,74 +1,51 @@
-import os
-import datetime
-import re
-import base64
-from dotenv import load_dotenv
 from flask import Flask, request
-import psycopg2
-import bcrypt
+from flask_sqlalchemy import SQLAlchemy
+from util.db import Users,Product, db
+from util.validations import Validation
+from util.encrypt import Encryption
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+import re
 
-CREATE_USERS_TABLE = """CREATE TABLE IF NOT EXISTS users 
-    (id SERIAL PRIMARY KEY,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    password TEXT NOT NULL,
-    user_name Text NOT NULL,
-    account_created TIMESTAMP NOT NULL,
-    account_updated TIMESTAMP NOT NULL);
-"""
-
-INSERT_USER_RETURN_ID = """ 
-    INSERT INTO users (first_name, last_name, password, user_name, account_created,account_updated)
-    VALUES 
-    (%s,%s,%s,%s,%s,%s) RETURNING id;
-"""
-#Connection to load env variables and connect to db using psycopg2
 load_dotenv()
 app = Flask(__name__)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config['JSON_SORT_KEYS'] = False
-url = os.getenv("DATABASE_URL")
+db.init_app(app)
 
-# End Point to check server status
-@app.get("/healthz")
-def get_healthz():
-    return {"message ": "Endpoint is Healthy"}, 200
+with app.app_context():
+    db.create_all()
 
-# Endpoint to create user
-@app.post("/v1/user")
+@app.route('/healthz', methods =['GET'])
+def health():
+    return {"message": "Endpoint is healthy"}
+ 
+ 
+@app.route('/v1/user', methods = ['POST'])
 def create_user():
     data = request.get_json()
-    connection = psycopg2.connect(url)
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    password = data.get("password")
-    username = data.get("username")
-
-    message = validation(first_name, last_name, username, password)
+    message = Validation.isUserDataValid(data)
     if message != "":
-        return {'message': message}, 400
+        return {"message" : message},400
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    username = data.get('username')
+    password = data.get('password')
 
-    encrypted_password = bcrypt.hashpw(
-        password.encode('utf-8'), bcrypt.gensalt())
-    encrypted_password = encrypted_password.decode('utf-8')
-    account_created = datetime.datetime.today()
-    account_updated = datetime.datetime.today()
-    with connection:
-        with connection.cursor() as cursor:
-            cursor.execute(CREATE_USERS_TABLE)
-            cursor.execute(
-                "SELECT * FROM users WHERE user_name = %s", (username,))
-            user = cursor.fetchone()
-            if user:
-                connection.commit()
-                cursor.close()
-                return {'message': 'User with this email already exists'}, 400
-            else:
-                cursor.execute(CREATE_USERS_TABLE)
-                cursor.execute(INSERT_USER_RETURN_ID, (first_name, last_name,
-                               encrypted_password, username, account_created, account_updated))
-                user_id = cursor.fetchone()[0]
-                connection.commit()
-                cursor.close()
+    user = Users.query.filter_by(username=username).first()
+    if user:
+        return {"message":"User already exist"},400
+
+    password = Encryption.encrypt(password)
+    new_user = Users(first_name=first_name, last_name=last_name, username=username, password=password)
+    db.session.add(new_user)
+    user_id = Users.query.filter_by(username=username).first().id
+    account_created = Users.query.filter_by(username=username).first().account_created
+    account_updated = Users.query.filter_by(username=username).first().account_updated
+
+    db.session.commit()
     schema = {
         "id": user_id,
         "first_name": first_name,
@@ -76,146 +53,221 @@ def create_user():
         "username": username,
         "account_created": account_created,
         "account_updated": account_updated
-    }
-    return schema, 201
-
-# Endpoint to fetch user details
-@app.get(f"/v1/user/<userId>")
-def get_user_details(userId):
-    header = request.headers
-    message = ""
-    if "Authorization" not in header:
-        message = "Please enter credentials"
-        return {"message":message}, 401
-    
-    connection = psycopg2.connect(url)
-    key = base64.b64decode(header.get("Authorization").split(" ")[1])
-    user_data = key.decode().split(":")
-    user_name, password = user_data[0], user_data[1]
-    with connection:
-        with connection.cursor() as cursor:
-            cursor.execute(CREATE_USERS_TABLE)
-            cursor.execute(
-                "SELECT * FROM users WHERE id = %s", (userId,))
-            user = cursor.fetchone()
-            if user is None:
-                message = "Forbidden"
-                connection.commit()
-                cursor.close()
-                return {'message': message}, 403
-            else:
-                cursor.execute("SELECT user_name,password FROM users WHERE id = %s", (userId,))
-                user_data = cursor.fetchone()
-                username_from_db = user_data[0]
-                password_from_db = user_data[1]
-                if not bcrypt.checkpw(password.encode('utf-8'),password_from_db.encode('utf-8')) or username_from_db!=user_name:
-                    message = "Invalid Credentials entered"
-                    connection.commit()
-                    cursor.close()
-                    return {"message":message}, 401
-                else:
-                    cursor.execute("SELECT first_name,last_name,user_name,account_created,account_updated FROM users WHERE id = %s", (userId,))
-                    user_data = cursor.fetchone()
-                    first_name = user_data[0]
-                    last_name = user_data[1]
-                    user_name = user_data[2]
-                    account_created = user_data[3]
-                    account_updated = user_data[4]
-                    connection.commit()
-                    cursor.close()
-    schema = {
-        "id": userId,
-        "first_name": first_name,
-        "last_name": last_name,
-        "username": user_name,
-        "account_created": account_created,
-        "account_updated": account_updated
     } 
+    return schema,201
+
+
+@app.route('/v1/product/<productId>', methods =['GET'])
+def get_product_details(productId):
+    product = Product.query.get(productId)
+    if not product:
+        return {"message":"Product Not Found"},404
+    schema = {
+        "id" : Product.query.filter_by(id=productId).first().id,
+        "name" : Product.query.filter_by(id=productId).first().name,
+        "description" : Product.query.filter_by(id=productId).first().description,
+        "sku" : Product.query.filter_by(id=productId).first().sku,
+        "manufacturer" : Product.query.filter_by(id=productId).first().manufacturer,
+        "quantity" : Product.query.filter_by(id=productId).first().quantity,
+        "date_added" : Product.query.filter_by(id=productId).first().date_added,
+        "date_last_updated" : Product.query.filter_by(id=productId).first().date_last_updated,
+        "owner_user_id" : Product.query.filter_by(id=productId).first().owner_user_id
+    }
     return schema,200
 
-# Endpoint to update user details
-@app.put(f"/v1/user/<userId>")
+# Authenticated End-Points
+@app.route('/v1/user/<userId>', methods =['GET'])
+def get_user_details(userId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+
+
+    username_from_user, password_from_user = Encryption.decode(header)
+    print(username_from_user,password_from_user)
+    user = Users.query.filter_by(username=username_from_user).first()
+
+    
+    if user is None:
+        return {"message":"Forbidden"},403
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+    elif user.username == username_from_user and Encryption.isValidPassword(password_from_user,user.password) and user.id != int(userId):
+        return {"message": "Forbidden"},403
+    schema = {
+        "id": userId,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "username": user.username,
+        "account_created": user.account_created,
+        "account_updated": user.account_updated
+    } 
+    db.session.commit()
+    return schema,200
+
+@app.route('/v1/user/<userId>', methods =['PUT'])
 def update_user_details(userId):
     header = request.headers
-    message = ""
-    if "Authorization" not in header:
-        message = "Please enter credentials"
-        return {"message":message}, 401
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    print(username_from_user,password_from_user)
+    user = Users.query.filter_by(username=username_from_user).first()
+
+    if user is None:
+        return {"message":"Forbidden"},403
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+    elif user.username == username_from_user and Encryption.isValidPassword(password_from_user,user.password) and user.id != int(userId):
+        return {"message": "Forbidden"},403
+
+    data = request.get_json()
+    if any(k not in ("first_name","last_name","password") for k in data.keys()):
+        return {"message":"Updated restricted to first_name, last_name, password only"},400
+    if data.get("first_name") == "" or data.get("last_name") == "" or data.get("password") == "":
+        return {"message":"Fields cannot be empty"},400
+        
     
-    connection = psycopg2.connect(url)
-    key = base64.b64decode(header.get("Authorization").split(" ")[1])
-    user_data = key.decode().split(":")
-    user_name, password = user_data[0], user_data[1]
-    with connection:
-        with connection.cursor() as cursor:
-            cursor.execute(CREATE_USERS_TABLE)
-            cursor.execute(
-                "SELECT * FROM users WHERE id = %s", (userId,))
-            user = cursor.fetchone()
-            if user is None:
-                message = "Forbidden"
-                connection.commit()
-                cursor.close()
-                return {'message': message}, 403
-            else:
-                cursor.execute("SELECT user_name,password FROM users WHERE id = %s", (userId,))
-                user_data = cursor.fetchone()
-                username_from_db = user_data[0]
-                password_from_db = user_data[1]
-                if not bcrypt.checkpw(password.encode('utf-8'),password_from_db.encode('utf-8')) or username_from_db!=user_name:
-                    message = "Invalid Credentials entered"
-                    connection.commit()
-                    cursor.close()
-                    return {"message":message}, 401
-                else:
-                    data = request.get_json()
-                    any_other_field =  any(k not in ("first_name","last_name","password") for k in data.keys())
-
-                    new_first_name = data.get("first_name")
-                    new_last_name = data.get("last_name")
-                    new_username = data.get("username")
-                    new_password = data.get("password")
-
-                    if any_other_field:
-                        connection.commit()
-                        cursor.close()
-                        return {"message" : "Update restricted ! Only update on first_name, last_name, password is allowed"},400
-                    elif new_first_name is None and new_last_name is None and new_username is None and new_password is None:
-                        connection.commit()
-                        cursor.close()
-                        return {},204
-                    else:
-                        today = datetime.datetime.today()
-                        if new_first_name:
-                            cursor.execute("UPDATE users SET first_name = %s WHERE id = %s", (new_first_name,userId))
-                        if new_last_name:
-                            cursor.execute("UPDATE users SET last_name = %s WHERE id = %s", (new_last_name,userId))
-                        if new_password:
-                            encrypted_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-                            encrypted_password = encrypted_password.decode('utf-8')
-                            cursor.execute("UPDATE users SET password = %s WHERE id = %s", (encrypted_password,userId))
-                        cursor.execute("UPDATE users SET account_updated = %s WHERE id = %s", (today,userId))
-                        connection.commit()
-                        cursor.close()
+    isUpdated = False
+    if data.get("first_name") is not None:
+        isUpdated = True
+        user.first_name = data.get("first_name")
+    if data.get("last_name") is not None:
+        isUpdated = True
+        user.last_name = data.get("last_name")
+    if data.get("password") is not None:
+        isUpdated = True
+        user.password = Encryption.encrypt(data.get("password"))
+    if isUpdated:
+        user.account_updated = datetime.now()
+        db.session.commit()
     return {},204
 
 
+@app.route('/v1/product', methods =['POST'])
+def add_product():
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    print(username_from_user,password_from_user)
+    user = Users.query.filter_by(username=username_from_user).first()
 
-# Function to perform validation
-def validation(first_name, last_name, username, password):
-    message = ""
-    contains_number = r'.*[0-9]'
-    is_username_valid = r'^(?i)([a-z0-9]+([/.][a-z0-9]+)?[@][a-z0-9]+[/.][a-z]+)$'
-    if first_name == "" or last_name == "" or username == "" or password == "":
-        message = "Value cannot be Null"
-    elif re.match(contains_number, first_name):
-        message = "First name should only contain characters"
-    elif re.match(contains_number, last_name):
-        message = "Last name should only contain characters"
-    elif not(re.match(is_username_valid,username)):
-        message = "Username should contain email address in correction format (example: demo@domain.com)"
+    if user is None:
+        return {"message":"Forbidden"},403
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
     
-    return message
+    data = request.get_json()
+    message = Validation.isProductDataValid(data)
+    if message!="":
+        return {"message":message},400
+    
+    
+    name = data.get("name")
+    description = data.get("description")
+    sku = data.get("sku")
+    manufacturer = data.get("manufacturer")
+    quantity = int(data.get("quantity"))
+    owner_user_id = Users.query.filter_by(username=username_from_user).first().id
+
+    is_SameSKU_available = Product.query.filter_by(sku=sku).first()
+    if is_SameSKU_available:
+        return {"message":"Product with same SKU already exist"},400
+    
+    new_product = Product(name=name, description=description, sku=sku, manufacturer=manufacturer,quantity=quantity,owner_user_id=owner_user_id)
+    db.session.add(new_product)
+    db.session.commit()
+    return {"message": "Product Added"},201
+
+
+@app.route('/v1/product/<productId>', methods =['PUT'])
+def update_product_details(productId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    print(username_from_user,password_from_user)
+    product = Product.query.filter_by(id=productId).first()
+
+    if product is None:
+        return {"message":"Forbidden"},403
+    
+    user = Users.query.filter_by(id=product.owner_user_id).first()
+    
+    if not Encryption.isValidPassword(password_from_user,user.password) or user.username != username_from_user:
+        return {"message": "Invalid Credentials"},401
+    # elif user.username == username_from_user and Encryption.isValidPassword(password_from_user,user.password) and user.id != int(userId):
+    #     return {"message": "Forbidden"},403
+
+    data = request.get_json()
+    if any(k not in ("name","description","sku", "manufacturer", "quantity") for k in data.keys()):
+        return {"message":"Updated restricted to name, description, sku, manufacturer, quantity only"},400
+    if data.get("name") == "" or data.get("description") == "" or data.get("sku") == "" or data.get("manufacturer") == "" or data.get("quantity") == "":
+        return {"message":"Fields cannot be empty"},400
+    
+    name = data.get("name")
+    description =  data.get("description")
+    sku =  data.get("sku")
+    manufacturer = data.get("manufacturer")
+    quantity = data.get("quantity")
+    is_updated = False
+    if sku is not None:
+        is_product_already_present = Product.query.filter_by(sku=sku).first()
+        if is_product_already_present:
+            return {"message":"Product with same sku already exist"},400
+        else:
+            is_updated = True
+            product.sku = sku
+    if name is not None:
+        is_updated = True
+        product.name = name 
+    if description is not None:
+        is_updated = True
+        product.description = description
+    if manufacturer is not None:
+        is_updated = True
+        product.manufacturer = manufacturer
+    if quantity is not None:
+        if not(re.match(r'^\d+$',quantity)) or int(quantity)<1:
+            return {"message" : "Quantity should be an integer > 0"},400
+        else:
+            product.quantity = quantity
+    if is_updated:
+        product.date_last_updated = datetime.now()
+        db.session.commit()
+
+    return {},204
+
+# @app.route('/v1/product/<productId>', methods =['PATCH'])
+# def update_product_details():
+#     return {"message": "Endpoint is healthy"}
+
+@app.route('/v1/product/<productId>', methods =['DELETE'])
+def delete_product(productId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    print(username_from_user,password_from_user)
+    product = Product.query.filter_by(id=productId).first()
+
+    if product is None:
+        return {"message":"Product Not Found"},404
+    
+    user = Users.query.filter_by(id=product.owner_user_id).first()
+    
+    if not Encryption.isValidPassword(password_from_user,user.password) or user.username != username_from_user:
+        return {"message": "Invalid Credentials"},401
+    db.session.delete(product)
+    db.session.commit()
+    return {},204
+
 
 if __name__ == '__main__':
     app.run()
