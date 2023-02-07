@@ -3,9 +3,9 @@
 
 Steps to install dependencies and libraries:
 1. Create Virtual Environment inside WEBAPPP folder\
-   Command: "python3 -m venv .environment"
+   Command: "python3 -m venv .venv"
 2. Activate Virtual Environment\
-   Command: "source .environment/bin/activate"
+   Command: "source .venv/bin/activate"
 3. Install dependencies from requirement.txt file\
    Command: "pip install -r requirements.txt"
 
