@@ -26,16 +26,21 @@ class Validation():
         manufacturer = data.get("manufacturer")
         quantity = data.get("quantity")
         mandatory = ["name","description","sku","manufacturer","quantity"]
-
-        is_number = r'^\d+$'
+        temp_int=1
+        temp_float=1.0
         if any(k not in data.keys() for k in mandatory):
             message = "Mandatory fields : name, description, sku, manufacturer, quantity"
         elif len(data)>5:
             message = "Restricted : Only name, description, sku, manufacturer, quantity fields are allowed"
         elif name=="" or description=="" or sku=="" or manufacturer=="" or quantity=="":
             message = "Values cannot be Null : name, description, sku, manufacturer, quantity"
-        elif not(re.match(is_number,quantity)) or int(quantity)<1:
-            message = "Quantity should be an integer > 0"
+        elif type(temp_float)==type(quantity):
+            if abs(int(quantity)-quantity)!=0:
+                message = "Quantity cannot contain floating values"
+        elif type(temp_int)!=type(quantity):
+            message = "Quantity should be an integer"
+        elif quantity<0:
+            message = "Quantity cannot be negative"
         
         return message
         
