@@ -17,8 +17,8 @@ class WebAppTest(unittest.TestCase):
             "username" :  "abcgmail.com",
             "password" : "add"
         }
-        self.assertEqual(validations.Validation.isUserValid(data1), "")
-        self.assertEqual(validations.Validation.isUserValid(data2), "Username should contain email address in correction format (example: demo@domain.com)")
+        print(self.assertEqual(validations.Validation.isUserDataValid(data1), ""))
+        print(self.assertEqual(validations.Validation.isUserDataValid(data2), "Username should contain email address in correction format (example: demo@domain.com)"))
 
     
 
