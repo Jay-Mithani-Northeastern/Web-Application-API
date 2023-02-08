@@ -1,6 +1,6 @@
 from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
-from util.db import Users,Product, db
+from util.db import Users,Products, db
 from util.validations import Validation
 from util.encrypt import Encryption
 from datetime import datetime
@@ -54,25 +54,6 @@ def create_user():
     return schema,201
 
 
-@app.route('/v1/product/<productId>', methods =['GET'])
-def get_product_details(productId):
-    product = Product.query.get(productId)
-    if not product:
-        return {"message":"Product Not Found"},404
-    schema = {
-        "id" : product.id,
-        "name" : product.name,
-        "description" : product.description,
-        "sku" : product.sku,
-        "manufacturer" : product.manufacturer,
-        "quantity" : product.quantity,
-        "date_added" : product.date_added,
-        "date_last_updated" :product.date_last_updated,
-        "owner_user_id" : product.owner_user_id
-    }
-    return schema,200
-
-# Authenticated End-Points
 @app.route('/v1/user/<userId>', methods =['GET'])
 def get_user_details(userId):
     header = request.headers
@@ -84,11 +65,11 @@ def get_user_details(userId):
 
     
     if user is None:
-        return {"message":"User not found"},401
+        return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
-    elif user.id != int(userId):
-        return {"message": "Forbidden"},403
+    elif user.id!=int(userId):
+        return {"message":"Forbidden"},403
     schema = {
         "id": userId,
         "first_name": user.first_name,
@@ -96,8 +77,7 @@ def get_user_details(userId):
         "username": user.username,
         "account_created": user.account_created,
         "account_updated": user.account_updated
-    } 
-    db.session.commit()
+    }
     return schema,200
 
 @app.route('/v1/user/<userId>', methods =['PUT'])
@@ -107,21 +87,27 @@ def update_user_details(userId):
     if message != "":
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
-    print(username_from_user,password_from_user)
     user = Users.query.filter_by(username=username_from_user).first()
 
     if user is None:
-        return {"message":"User not found"},401
+        return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
-    elif user.id != int(userId):
-        return {"message": "Forbidden"},403
+    elif user.id!=int(userId):
+        return {"message":"Forbidden"},403
 
+    mandatory = ["first_name","last_name","username"]
     data = request.get_json()
-    if any(k not in ("first_name","last_name","password") for k in data.keys()):
+    if any(k not in data.keys() for k in mandatory):
+        return {"message": "Mandatory fields : first_name, last_name, username, password"},400
+    elif any(k not in ("first_name","last_name","password","username") for k in data.keys()):
         return {"message":"Updated restricted to first_name, last_name, password only"},400
-    if data.get("first_name") == "" or data.get("last_name") == "" or data.get("password") == "":
+    elif data.get("username") is None:
+        return {"message":"Please enter username"},400
+    elif data.get("first_name") == "" or data.get("last_name") == "" or data.get("password") == "" or data.get("username")=="":
         return {"message":"Fields cannot be empty"},400
+    elif username_from_user!=data.get("username"):
+        return {"message":"Please enter correct username in username field"}
         
     
     isUpdated = False
@@ -147,14 +133,13 @@ def add_product():
     if message != "":
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
-    print(username_from_user,password_from_user)
     user = Users.query.filter_by(username=username_from_user).first()
 
     if user is None:
-        return {"message":"User not found"},401
+        return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
-    
+  
     data = request.get_json()
     message = Validation.isProductDataValid(data)
     if message!="":
@@ -168,14 +153,14 @@ def add_product():
     quantity = int(data.get("quantity"))
     owner_user_id = Users.query.filter_by(username=username_from_user).first().id
 
-    is_SameSKU_available = Product.query.filter_by(sku=sku).first()
+    is_SameSKU_available = Products.query.filter_by(sku=sku).first()
     if is_SameSKU_available:
         return {"message":"Product with same SKU already exist"},400
     
-    new_product = Product(name=name, description=description, sku=sku, manufacturer=manufacturer,quantity=quantity,owner_user_id=owner_user_id)
+    new_product = Products(name=name, description=description, sku=sku, manufacturer=manufacturer,quantity=quantity,owner_user_id=owner_user_id)
     db.session.add(new_product)
     db.session.commit()
-    product = Product.query.filter_by(sku=sku).first()
+    product = Products.query.filter_by(sku=sku).first()
     schema = {
         "id" : product.id,
         "name" : product.name,
@@ -190,6 +175,24 @@ def add_product():
     return schema,201
 
 
+@app.route('/v1/product/<productId>', methods =['GET'])
+def get_product_details(productId):
+    product = Products.query.get(productId)
+    if not product:
+        return {"message":"Product Not Found"},404
+    schema = {
+        "id" : product.id,
+        "name" : product.name,
+        "description" : product.description,
+        "sku" : product.sku,
+        "manufacturer" : product.manufacturer,
+        "quantity" : product.quantity,
+        "date_added" : product.date_added,
+        "date_last_updated" :product.date_last_updated,
+        "owner_user_id" : product.owner_user_id
+    }
+    return schema,200
+
 @app.route('/v1/product/<productId>', methods =['PUT'])
 def update_product_details(productId):
     header = request.headers
@@ -197,23 +200,22 @@ def update_product_details(productId):
     if message != "":
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
-    print(username_from_user,password_from_user)
-    product = Product.query.filter_by(id=productId).first()
-    if product is None:
-        return {"message":"Forbidden"},403
     
-    user = Users.query.filter_by(id=product.owner_user_id).first()
-    if user.username!= username_from_user:
-        return {"message":"Unauthorized"},401
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is None or product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
     
 
     data = request.get_json()
-    if any(k not in ("name","description","sku", "manufacturer", "quantity") for k in data.keys()):
-        return {"message":"Updated restricted to name, description, sku, manufacturer, quantity only"},400
-    if data.get("name") == "" or data.get("description") == "" or data.get("sku") == "" or data.get("manufacturer") == "" or data.get("quantity") == "":
-        return {"message":"Fields cannot be empty"},400
+    message = Validation.isProductDataValid(data)
+    if message!="":
+        return {"message":message},400
     
     name = data.get("name")
     description =  data.get("description")
@@ -222,7 +224,7 @@ def update_product_details(productId):
     quantity = data.get("quantity")
     is_updated = False
     if sku is not None:
-        is_product_already_present = Product.query.filter_by(sku=sku).first()
+        is_product_already_present = Products.query.filter_by(sku=sku).first()
         if is_product_already_present:
             return {"message":"Product with same sku already exist"},400
         else:
@@ -238,19 +240,8 @@ def update_product_details(productId):
         is_updated = True
         product.manufacturer = manufacturer
     if quantity is not None:
-        temp_int=1
-        temp_float=1.0
-        print(type(temp_int),type(quantity))
-        if type(temp_float)==type(quantity):
-            if abs(int(quantity)-quantity)!=0:
-                return {"message" : "Quantity cannot contain floating values"},400
-        elif type(temp_int)!=type(quantity):
-            return {"message" : "Quantity should be an integer"},400
-        elif quantity<0:
-            return {"message" : "Quantity cannot be negative"},400
-        else:
-            is_updated = True
-            product.quantity = int(quantity)
+        is_updated = True
+        product.quantity = int(quantity)
     if is_updated:
         product.date_last_updated = datetime.now()
         db.session.commit()
@@ -264,16 +255,16 @@ def replace_product_details(productId):
     if message != "":
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
-    print(username_from_user,password_from_user)
-    product = Product.query.filter_by(id=productId).first()
-
-    if product is None:
-        return {"message":"Forbidden"},403
     
-    user = Users.query.filter_by(id=product.owner_user_id).first()
-    
-    if not Encryption.isValidPassword(password_from_user,user.password) or user.username != username_from_user:
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is None or product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
 
     data = request.get_json()
     if any(k not in ("name","description","sku", "manufacturer", "quantity") for k in data.keys()):
@@ -288,7 +279,7 @@ def replace_product_details(productId):
     quantity = data.get("quantity")
     is_updated = False
     if sku is not None:
-        is_product_already_present = Product.query.filter_by(sku=sku).first()
+        is_product_already_present = Products.query.filter_by(sku=sku).first()
         if is_product_already_present:
             return {"message":"Product with same sku already exist"},400
         else:
@@ -330,16 +321,16 @@ def delete_product(productId):
     if message != "":
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
-    print(username_from_user,password_from_user)
-    product = Product.query.filter_by(id=productId).first()
-
-    if product is None:
-        return {"message":"Product Not Found"},404
-    
-    user = Users.query.filter_by(id=product.owner_user_id).first()
-    
-    if not Encryption.isValidPassword(password_from_user,user.password) or user.username != username_from_user:
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is None or product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
+    
     db.session.delete(product)
     db.session.commit()
     return {},204

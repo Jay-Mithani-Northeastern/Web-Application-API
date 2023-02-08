@@ -13,7 +13,7 @@ class Users(db.Model):
     account_created = db.Column(db.DateTime, nullable=False, default=datetime.now())
     account_updated = db.Column(db.DateTime, nullable=False, default=datetime.now())
 
-class Product(db.Model):
+class Products(db.Model):
     __tablename__ = 'products'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
