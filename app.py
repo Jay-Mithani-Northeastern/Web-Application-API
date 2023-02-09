@@ -279,21 +279,33 @@ def replace_product_details(productId):
     quantity = data.get("quantity")
     is_updated = False
     if sku is not None:
-        is_product_already_present = Products.query.filter_by(sku=sku).first()
-        if is_product_already_present:
-            return {"message":"Product with same sku already exist"},400
+        if  not isinstance("test",type(sku)):
+            return {"message":"Invalid datatype : name, description, sku, manufacturer can only contain characters"},400
+        else:
+            is_product_already_present = Products.query.filter_by(sku=sku).first()
+            if is_product_already_present:
+                return {"message":"Product with same sku already exist"},400
+            else:
+                is_updated = True
+                product.sku = sku
+    if name is not None:
+        if  not isinstance("test",type(name)):
+            return {"message":"Invalid datatype : name, description, sku, manufacturer can only contain characters"},400
         else:
             is_updated = True
-            product.sku = sku
-    if name is not None:
-        is_updated = True
-        product.name = name 
+            product.name = name 
     if description is not None:
-        is_updated = True
-        product.description = description
+        if  not isinstance("test",type(description)):
+            return {"message":"Invalid datatype : name, description, sku, manufacturer can only contain characters"},400
+        else:
+            is_updated = True
+            product.description = description
     if manufacturer is not None:
-        is_updated = True
-        product.manufacturer = manufacturer
+        if  not isinstance("test",type(manufacturer)):
+            return {"message":"Invalid datatype : name, description, sku, manufacturer can only contain characters"},400
+        else:
+            is_updated = True
+            product.manufacturer = manufacturer
     if quantity is not None:
         temp_int=1
         temp_float=1.0
