@@ -45,6 +45,8 @@ class Validation():
         elif isinstance(temp_float,type(quantity)):
             if abs(int(quantity)-quantity)!=0:
                 message = "Quantity cannot contain floating values"
+            elif int(quantity)<0:
+                message = "Quantity cannot be negative"
         elif not isinstance(temp_int,type(quantity)):
             message = "Quantity should be an integer"
         elif quantity<0:
