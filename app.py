@@ -62,14 +62,15 @@ def get_user_details(userId):
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
     user = Users.query.filter_by(username=username_from_user).first()
-
-    
+    uId = Users.query.filter_by(id=userId).first()
     if user is None:
         return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
-    elif user.id!=int(userId):
+    elif user.id!=int(userId) and uId is not None:
         return {"message":"Forbidden"},403
+    elif uId is None:
+        return {"message":"User ID Not Found"},404
     schema = {
         "id": userId,
         "first_name": user.first_name,
@@ -88,13 +89,15 @@ def update_user_details(userId):
         return {"message":message},401
     username_from_user, password_from_user = Encryption.decode(header)
     user = Users.query.filter_by(username=username_from_user).first()
-
+    uId = Users.query.filter_by(id=userId).first()
     if user is None:
         return {"message":"Invalid Credentials"},401
     elif not Encryption.isValidPassword(password_from_user,user.password):
         return {"message": "Invalid Credentials"},401
-    elif user.id!=int(userId):
+    elif user.id!=int(userId) and uId is not None:
         return {"message":"Forbidden"},403
+    elif uId is None:
+        return {"message":"User ID Not Found"},404
 
     mandatory = ["first_name","last_name","username"]
     data = request.get_json()
@@ -208,8 +211,10 @@ def update_product_details(productId):
         return {"message": "Invalid Credentials"},401
 
     product = Products.query.filter_by(id=productId).first()
-    if product is None or product.owner_user_id!=user.id:
+    if product is not None and product.owner_user_id!=user.id:
         return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
     
 
     data = request.get_json()
@@ -225,7 +230,10 @@ def update_product_details(productId):
     is_updated = False
     if sku is not None:
         is_product_already_present = Products.query.filter_by(sku=sku).first()
-        if is_product_already_present:
+        is_sku_of_same_product = Products.query.filter_by(id=productId).first()
+        if sku == is_sku_of_same_product.sku:
+            product.sku = sku
+        elif is_product_already_present:
             return {"message":"Product with same sku already exist"},400
         else:
             is_updated = True
@@ -263,8 +271,10 @@ def replace_product_details(productId):
         return {"message": "Invalid Credentials"},401
 
     product = Products.query.filter_by(id=productId).first()
-    if product is None or product.owner_user_id!=user.id:
+    if product is not None and product.owner_user_id!=user.id:
         return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
 
     data = request.get_json()
     if any(k not in ("name","description","sku", "manufacturer", "quantity") for k in data.keys()):
@@ -283,7 +293,10 @@ def replace_product_details(productId):
             return {"message":"Invalid datatype : name, description, sku, manufacturer can only contain characters"},400
         else:
             is_product_already_present = Products.query.filter_by(sku=sku).first()
-            if is_product_already_present:
+            is_sku_of_same_product = Products.query.filter_by(id=productId).first()
+            if sku == is_sku_of_same_product.sku:
+                product.sku = sku
+            elif is_product_already_present:
                 return {"message":"Product with same sku already exist"},400
             else:
                 is_updated = True
@@ -309,10 +322,11 @@ def replace_product_details(productId):
     if quantity is not None:
         temp_int=1
         temp_float=1.0
-        print(type(temp_int),type(quantity))
         if type(temp_float)==type(quantity):
             if abs(int(quantity)-quantity)!=0:
                 return {"message" : "Quantity cannot contain floating values"},400
+            elif int(quantity)<0:
+                return {"message" : "Quantity cannot be negative"},400
         elif type(temp_int)!=type(quantity):
             return {"message" : "Quantity should be an integer"},400
         elif quantity<0:
@@ -340,8 +354,10 @@ def delete_product(productId):
         return {"message": "Invalid Credentials"},401
 
     product = Products.query.filter_by(id=productId).first()
-    if product is None or product.owner_user_id!=user.id:
+    if product is not None and product.owner_user_id!=user.id:
         return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
     
     db.session.delete(product)
     db.session.commit()
