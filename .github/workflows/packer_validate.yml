@@ -1,0 +1,28 @@
+name: Run packer validate on AWS
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+jobs:
+  packer_validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Github code checkout
+        uses: actions/checkout@v1
+      - name: Create a zip folder
+        run: zip -r webapp.zip ./ -x *.git*
+      - name : Packer Init
+        uses: hashicorp/packer-github-actions@master
+        with:
+          command: init
+          target: aws-webapp.pkr.hcl
+          working_directory: 'Packer'
+      - name: Validate Template
+        uses: hashicorp/packer-github-actions@master
+        with:
+          command: validate
+          arguments: -syntax-only
+          target: aws-webapp.pkr.hcl
+          working_directory: 'Packer'
