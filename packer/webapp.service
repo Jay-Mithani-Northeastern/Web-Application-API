@@ -1,0 +1,12 @@
+[Unit]
+Description=Custom Python Service
+After=multi-user.target
+
+[Service]
+Type=simple
+User=ec2-user
+Environment=DATABASE_URL=postgresql://postgres:admin@localhost/webapp
+ExecStart=/usr/bin/python3 /home/webapp/app.py
+
+[Install]
+WantedBy=multi-user.target

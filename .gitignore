@@ -26,6 +26,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.DS_Store
+packer/dev.auto.pkrvars.hcl
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -128,3 +130,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#packer
+variables.pkr.hcl
