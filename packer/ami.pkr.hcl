@@ -6,7 +6,6 @@ variable "aws_region" {
 variable "ami_regions" {
   default = [
     "us-east-1",
-    "us-east-2",
   ]
 }
 variable "ami_users" {
