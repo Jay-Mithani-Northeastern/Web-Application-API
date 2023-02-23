@@ -12,7 +12,7 @@ jobs:
       - name: Github code checkout
         uses: actions/checkout@v1
       - name: Create a zip folder
-        run: zip -r webapp.zip ./ -x *.git*
+        run: zip -r app.zip ./ -x *.git*
       - name : Packer Init
         uses: hashicorp/packer-github-actions@master
         with:
