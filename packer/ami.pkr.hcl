@@ -77,7 +77,6 @@ build {
   provisioner "file" {
     source      = "${var.artifacts_source}"
     destination = "${var.artifacts_destination}"
-  }
 
   provisioner "shell" {
     script = "${var.packer_script_file}"
