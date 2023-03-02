@@ -5,7 +5,7 @@ After=multi-user.target
 [Service]
 Type=simple
 User=ec2-user
-Environment=DATABASE_URL=postgresql://postgres:admin@localhost/webapp
+EnvironmentFile = /etc/environment
 ExecStart=/usr/bin/python3 /home/webapp/app.py
 
 [Install]

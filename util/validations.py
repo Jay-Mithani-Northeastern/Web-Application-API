@@ -47,10 +47,14 @@ class Validation():
                 message = "Quantity cannot contain floating values"
             elif int(quantity)<0:
                 message = "Quantity cannot be negative"
+            elif int(quantity)>100:
+                message = "Quantity cannot be greater than 100"
         elif not isinstance(temp_int,type(quantity)):
             message = "Quantity should be an integer"
         elif quantity<0:
             message = "Quantity cannot be negative"
+        elif quantity>100:
+            message = "Quantity cannot be greater than 100"
         
         return message
 

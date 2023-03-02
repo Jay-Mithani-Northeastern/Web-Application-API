@@ -1,19 +1,23 @@
-from flask import Flask, request
+from flask import Flask, request, redirect
 from flask_sqlalchemy import SQLAlchemy
-from util.db import Users,Products, db
+from util.db import Users, Products, ProductImage, db
 from util.validations import Validation
 from util.encrypt import Encryption
 from datetime import datetime
+from util.s3 import s3, upload_file_to_s3, delete_object_from_s3
 import os
 from dotenv import load_dotenv
 import re
+import uuid 
 
 load_dotenv()
 app = Flask(__name__)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config['JSON_SORT_KEYS'] = False
+app.config['S3_BUCKET'] = os.environ.get("S3_BUCKET_NAME")
 db.init_app(app)
+
 
 with app.app_context():
     db.create_all()
@@ -327,10 +331,14 @@ def replace_product_details(productId):
                 return {"message" : "Quantity cannot contain floating values"},400
             elif int(quantity)<0:
                 return {"message" : "Quantity cannot be negative"},400
+            elif int(quantity)>100:
+                return {"message" : "Quantity cannot be greater than 100"},400
         elif type(temp_int)!=type(quantity):
             return {"message" : "Quantity should be an integer"},400
         elif quantity<0:
             return {"message" : "Quantity cannot be negative"},400
+        elif quantity>100:
+            return {"message" : "Quantity cannot be greater than 100"},400
         else:
             is_updated = True
             product.quantity = int(quantity)
@@ -364,5 +372,162 @@ def delete_product(productId):
     return {},204
 
 
+@app.route("/v1/product/<productId>/image", methods=["GET"])
+def get_all_files(productId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is not None and product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
+
+    images = ProductImage.query.filter_by(product_id=productId)
+    if images.first() is None:
+        return {"message":"No Image exist"},404
+    schema = []
+    for image in images:
+        temp ={
+        "image_id": image.id,
+        "product_id": image.product_id,
+        "file_name": image.file_name,
+        "date_created": image.date_created,
+        "s3_bucket_path": image.s3_bucket_path
+        }
+        schema.append(temp)
+    
+    return schema,200
+
+@app.route("/v1/product/<productId>/image/<imageId>", methods=["GET"])
+def get_file(productId,imageId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    print(product is not None)
+    if product is not None and product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
+
+    image = ProductImage.query.filter_by(id=imageId).first()
+    print(image is not None)
+    if image is not None and image.product_id!=int(productId):
+        return {"message":"Forbidden"},403
+    elif image is None:
+        return {"message":"Image not Found"},404
+
+    schema = {
+        "id" : image.id,
+        "product_id" : image.product_id,
+        "file_name" : image.file_name,
+        "date_created" : image.date_created,
+        "s3_bucket_path" : image.s3_bucket_path
+    }
+    return schema, 200
+
+
+@app.route("/v1/product/<productId>/image", methods=["POST"])
+def upload_file(productId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is not None and product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
+
+    # Logic to upload images
+    files = request.files
+    if len(files)==0:
+        return {"message":"Nothing to Upload"},400
+    
+    for item in files.items(multi=True):
+        if item[0].strip()=='':
+            return {"message":"Keys cannot be blank"},400
+        elif item[1].filename=="":
+            return {"message":f"Please select file to upload for {item[0]}"},400
+    schema=[]
+    for item in files.items(multi=True):
+        file = item[1]
+        unique_Id = uuid.uuid4()
+        file_name = file.filename
+        location = f"u_{product.owner_user_id}/p_{productId}/{unique_Id}/{file_name}"
+        output = upload_file_to_s3(file,location,app.config['S3_BUCKET'])
+        if output!="Upload Successful":
+            return {"message":"Error at s3"},400
+        image = ProductImage(product_id=productId,file_name=file_name,s3_bucket_path=location)
+        db.session.add(image)
+        db.session.commit()
+        image = ProductImage.query.filter_by(s3_bucket_path=location).first()
+        temp = {
+            "id" : image.id,
+            "product_id" : image.product_id,
+            "file_name" : image.file_name,
+            "date_created" : image.date_created,
+            "s3_bucket_path" : image.s3_bucket_path
+        }
+        schema.append(temp)
+    return schema,201
+
+@app.route("/v1/product/<productId>/image/<imageId>", methods=["DELETE"])
+def delete_file(productId,imageId):
+    header = request.headers
+    message =  Validation.isUserValid(header)
+    if message != "":
+        return {"message":message},401
+    username_from_user, password_from_user = Encryption.decode(header)
+    user = Users.query.filter_by(username=username_from_user).first()
+    if user is None:
+        return {"message":"Invalid Credentials"},401
+    elif not Encryption.isValidPassword(password_from_user,user.password):
+        return {"message": "Invalid Credentials"},401
+
+    product = Products.query.filter_by(id=productId).first()
+    if product is not None and product.owner_user_id!=user.id:
+        return {"message":"Forbidden"},403
+    elif product is None:
+        return {"message":"Product Not Found"},404
+
+    image = ProductImage.query.filter_by(id=imageId).first()
+    if image is not None and image.product_id!=int(productId):
+        return {"message":"Forbidden"},403
+    elif image is None:
+        return {"message":"Image not Found"},404
+
+    output = delete_object_from_s3(image.s3_bucket_path,app.config['S3_BUCKET'])
+    if output!="Delete Successful":
+        return {"message":"Error at s3"},400
+    db.session.delete(image)
+    db.session.commit()
+    return {},204
+
+
 if __name__ == '__main__':
-    app.run(host="0.0.0.0")
+    app.run(host="0.0.0.0", debug=True)
