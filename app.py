@@ -8,7 +8,8 @@ from util.s3 import s3, upload_file_to_s3, delete_object_from_s3
 import os
 from dotenv import load_dotenv
 import re
-import uuid 
+import uuid
+import imghdr 
 
 load_dotenv()
 app = Flask(__name__)
@@ -473,6 +474,8 @@ def upload_file(productId):
             return {"message":"Keys cannot be blank"},400
         elif item[1].filename=="":
             return {"message":f"Please select file to upload for {item[0]}"},400
+        elif imghdr.what(item[1]) is None:
+            return {"message":"Only Images are allowed to be uploaded"},400
     schema=[]
     for item in files.items(multi=True):
         file = item[1]
