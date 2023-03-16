@@ -1,5 +1,5 @@
 
-# Web ApplicationFDSFDS
+# Web Application
 
 Steps to install dependencies and libraries:
 1. Create Virtual Environment inside WEBAPPP folder\
