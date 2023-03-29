@@ -16,6 +16,7 @@ python-dotenv==0.21.1
 s3transfer==0.6.0
 six==1.16.0
 SQLAlchemy==2.0.1
+statsd==4.0.1
 tomli==2.0.1
 typing_extensions==4.4.0
 urllib3==1.26.14
