@@ -25,7 +25,7 @@ with app.app_context():
     db.create_all()
 
 format = '%(message)s'
-logging.basicConfig(filename='./logs/app.log', level=logging.DEBUG, format=format)
+logging.basicConfig(filename='/home/webapp/logs/app.log', level=logging.DEBUG, format=format)
 c = statsd.StatsClient('localhost', 8125)
 
 @app.route('/healthz', methods =['GET'])
