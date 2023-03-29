@@ -28,6 +28,12 @@ sudo systemctl restart postgresql
 
 pip3 install -r /home/webapp/requirements.txt
 
+sudo chown ec2-user /home/webapp/logs/app.log
+sudo touch /home/webapp/logs/app.log
+
+sudo yum install -y amazon-cloudwatch-agent 
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/home/webapp/app_config.json
+
 sudo systemctl daemon-reload
 sudo systemctl start webapp.service
 sudo systemctl enable webapp.service
