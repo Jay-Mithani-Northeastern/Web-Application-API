@@ -16,8 +16,8 @@ load_dotenv()
 
 app = Flask(__name__)
 logger = logging.getLogger('WebApp')
-logger.setLevel(logging.ERROR)
-handler = logging.FileHandler('app.log',mode='a')
+logger.setLevel(logging.INFO)
+handler = logging.FileHandler('/home/webapp/app.log',mode='a')
 ip_address = Flask
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
