@@ -75,7 +75,20 @@ The webapp contains 4 endpoints:
    - Only the user owner who created the product, is allowed to update product details
    - Only the fields which needs to be updated should be passed in request payload
 
-9. /v1.product/{productId} - DELETE
+9. /v1/product/{productId} - DELETE
    - API to delete product
    - Only the user owner who created the product, is allowed to delete the product
+
+10. /v1/product/<productId>/image - GET
+   - API to fetch all images details of a single product
+
+11. /v1/product/<productId>/image/<imageId> - GET
+   - API to fetch a single image of a particular product
+  
+12. /v1/product/<productId>/image - POST
+   - API to push image(s) of a particular product to S3 bucket
+
+13. /v1/product/<productId>/image/<imageId> - DELETE
+   - API to delete image of a product from S3 bucket
+
    
