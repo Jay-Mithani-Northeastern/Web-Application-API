@@ -6,6 +6,10 @@ on:
   push:
     branches:
      - 'main'
+
+env:
+  PRODUCT_VERSION: "1.8.6"
+
 jobs:
   packer_build:
     runs-on: ubuntu-latest
@@ -20,27 +24,77 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-      - name : Packer Init
-        uses: hashicorp/packer-github-actions@master
-        with:
-          command: init
-          target: ami.pkr.hcl
-          working_directory: 'packer'
+      # - name : Packer Init
+      #   uses: hashicorp/packer-github-actions@master
+      #   with:
+      #     command: init
+      #     target: ami.pkr.hcl
+      #     working_directory: 'packer'
 
-      - name: Validate Template
-        uses: hashicorp/packer-github-actions@master
-        with:
-          command: validate
-          arguments: -syntax-only
-          target: ami.pkr.hcl
-          working_directory: 'packer'
+      # - name: Validate Template
+      #   uses: hashicorp/packer-github-actions@master
+      #   with:
+      #     command: validate
+      #     arguments: -syntax-only
+      #     target: ami.pkr.hcl
+      #     working_directory: 'packer'
 
-      - name: Build Artifact
-        uses: hashicorp/packer-github-actions@master
+      # - name: Build Artifact
+      #   uses: hashicorp/packer-github-actions@master
+      #   with:
+      #     command: build
+      #     arguments: '-color=false -on-error=abort -var-file=dev.auto.pkrvars.hcl'
+      #     target: ami.pkr.hcl
+      #     working_directory: 'packer'
+      #   env:
+      #     PACKER_LOG: 1
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        id: setup
         with:
-          command: build
-          arguments: '-color=false -on-error=abort -var-file=dev.auto.pkrvars.hcl'
-          target: ami.pkr.hcl
-          working_directory: 'packer'
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: Run `packer init`
+        id: init
+        run: "packer init ami.pkr.hcl"
+        working-directory: packer
+
+      - name: Run `packer validate`
+        id: validate
+        run: "packer validate ami.pkr.hcl"
+        working-directory: packer
+
+      - name: Run `packer build`
+        id: build
+        run: "packer build -machine-readable -var-file=dev.auto.pkrvars.hcl ami.pkr.hcl | tee build.log"
+        working-directory: packer
+
+      - name: Parse AMI ID
+        id: parse_ami_id
+        working-directory: packer
+        run: |
+          CUSTOM_CMD="$(grep 'artifact,0,id' build.log | cut -d, -f6 | cut -d: -f2)"
+          echo "ami_id=$CUSTOM_CMD" >> "$GITHUB_OUTPUT"
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEMO_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEMO_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Output AMI_ID
+        run: |
+          echo $AMI_ID
         env:
-          PACKER_LOG: 1
+          AMI_ID: ${{ steps.parse_ami_id.outputs.ami_id }}
+
+      - name: Create launch template version
+        run: |
+          aws ec2 create-launch-template-version --launch-template-name asg_launch_config --source-version 1 --launch-template-data '{"ImageId":"'"$AMI_ID"'"}'
+        env:
+          AMI_ID: ${{ steps.parse_ami_id.outputs.ami_id }}
+
+      - name: Start instance refresh
+        run: |
+          aws autoscaling start-instance-refresh --auto-scaling-group-name webApp_ASG
