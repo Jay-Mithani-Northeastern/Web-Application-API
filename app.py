@@ -43,7 +43,7 @@ def health():
     return {"message": "Endpoint is healthy"},200
  
  
-@app.route('/v1/user', methods = ['POST'])
+@app.route('/v2/user', methods = ['POST'])
 def create_user():
     c.incr('Create_User')
     logger.info('Create User API started')
@@ -79,7 +79,7 @@ def create_user():
     return schema,201
 
 
-@app.route('/v1/user/<userId>', methods =['GET'])
+@app.route('/v2/user/<userId>', methods =['GET'])
 def get_user_details(userId):
     c.incr('Get_User')
     logger.info('Get User Details API started')
@@ -114,7 +114,7 @@ def get_user_details(userId):
     logger.info('Get User Details API started')
     return schema,200
 
-@app.route('/v1/user/<userId>', methods =['PUT'])
+@app.route('/v2/user/<userId>', methods =['PUT'])
 def update_user_details(userId):
     c.incr('Update_User')
     logger.info('Update User API started')
